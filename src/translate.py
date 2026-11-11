@@ -1,8 +1,10 @@
+import logging
 import re
 import threading
 from collections import OrderedDict
 
 LANG_CODES = {"ja": "jpn_Jpan", "en": "eng_Latn"}
+log = logging.getLogger(__name__)
 
 
 def detect_language(text: str) -> str:
@@ -32,6 +34,7 @@ class Translator:
         with self.lock:
             if key in self.cache:
                 self.cache.move_to_end(key)
+                log.debug("Translation cache hit (%s, %d characters)", lang, len(text))
                 return self.cache[key]
             self.tokenizer.src_lang = LANG_CODES[lang]
             inputs = self.tokenizer(text, return_tensors='pt', truncation=True, max_length=384)

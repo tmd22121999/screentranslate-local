@@ -1,7 +1,6 @@
 {
   "region": {"left": 180, "top": 650, "width": 1100, "height": 260},
   "capture_interval_ms": 350,
-  "change_threshold": 2.5,
   "ocr_min_confidence": 0.55,
   "ocr_scale": 1.5,
   "translation_model": "facebook/nllb-200-distilled-600M",
@@ -10,5 +9,20 @@
   "overlay_background": "#101010",
   "overlay_foreground": "#ffffff",
   "source_language": "ja",
-  "debug": false
+  "detection": {"padding": 4, "min_side": 8, "rescan_ms": 900},
+  "overlay": {
+    "background_mode": "text_region",
+    "padding": 6,
+    "min_font_size": 12,
+    "max_font_size": 21,
+    "auto_fit_text": true,
+    "hide_during_capture": false
+  },
+  "debug": {
+    "enabled": true,
+    "save_capture": false,
+    "save_detected_regions": false,
+    "log_ocr": false,
+    "log_translation": false
+  }
 }

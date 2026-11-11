@@ -1,35 +1,48 @@
-# ScreenTranslate Local — Windows MVP
+# ScreenTranslate Local
 
-Local Japanese/English OCR -> Vietnamese translation -> click-through overlay.
+Capture a Windows desktop region, recognize Japanese or English text, and overlay Vietnamese translations. Detection and model inference run locally on CPU.
 
-## Installation
-1. Install Python 3.11 (64-bit) and check `py -3.11 --version`.
-2. Extract this folder. Run `install.bat` (internet required for initial model/package download).
-3. Set the `region` in `config.json` using **physical screen pixels**: left/top/width/height. For example a 1920x1080 screen, a dialogue box near bottom might be `{ "left": 180, "top": 650, "width": 1100, "height": 260 }`.
-4. Run `run.bat`. First run downloads NLLB model from Hugging Face (several GB including weights/dependencies). Subsequent runs can be offline if cached.
-5. F8 toggles overlay visibility. Ctrl+C in terminal or close terminal to quit.
+## Windows setup
 
-## Important limitations
-- **MVP / not benchmarked:** Dependencies and model compatibility have not been installed or run on the target Windows PC. Test OCR quality and translation latency before production use.
-- Japanese OCR uses **MangaOCR**, while English OCR uses **RapidOCR**. Set `source_language` to `ja` or `en` in config.json. `auto` is not a validated bilingual OCR mode and may miss Japanese text. MangaOCR is optimized for Japanese manga and may struggle with game UI typography. It recognizes the entire selected region, so keep the region tightly cropped.
-- Current overlay groups all recognized text into one block; Japanese mode covers the entire selected region. It does not replace each original word exactly. It covers the bounding rectangle and renders translated text at its top-left.
-- OCR only runs when a 64x24 image thumbnail changes enough; subtle text changes can be missed. Adjust `change_threshold` downward or disable detection for testing.
-- Overlay exclusion from screen capture is Windows/capture-backend dependent. Check the warning in console and confirm the overlay does not recursively OCR its own translated text.
-- Overlay may not work over exclusive fullscreen, protected video, elevated apps, or some anti-cheat-protected games. Prefer borderless windowed mode; do not bypass anti-cheat.
-- Model is CPU-based, even on Radeon RX 7800 XT; NLLB-600M latency may exceed 1 second for some sentences. The interval is a **minimum wait**, not a guaranteed processing rate.
-- Set source_language explicitly to ja or en for best OCR selection. In auto mode, RapidOCR is used and Japanese is not reliable. Translation language detection uses kana/kanji heuristics. Japanese text written only in Latin letters is detected as English. Override `source_language` with `ja` or `en` when known.
-- Screen scaling >100%, mixed DPI monitors, multiple monitors, and coordinate alignment may require adjustments. Test at 100% scaling on the primary monitor first.
-- Overlay text can overflow the selected capture region for long Vietnamese translations.
-- This app downloads a model at first launch; it does not send captured text to remote translation APIs.
+1. Install 64-bit Python 3.11 with the Windows Python launcher. Check with `py -3.11 --version`.
+2. Run `install.bat` to create `.venv` and install dependencies. If the environment already exists, update it with `.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+3. In `config.json`, set `source_language` to `ja` or `en` and configure `region` in physical screen pixels. Use negative `left` or `top` for monitors left of or above the primary display.
+4. Run `run.bat`. The first launch needs internet access for uncached models. Press **F8** to hide or restore the latest overlay. Close the console to quit.
 
-## Architecture
-`MSS capture -> thumbnail change detector -> MangaOCR (ja) or RapidOCR ONNX (en) -> normalize/group text -> NLLB translation (CPU) -> Tkinter Win32 click-through overlay`.
+| Model | Approximate download or installed size | Location |
+| --- | --- | --- |
+| RapidOCR ONNX detection, recognition and classifier | 16.2 MB bundled, including the 4.75 MB detector | `.venv\Lib\site-packages\rapidocr_onnxruntime\models` |
+| MangaOCR, Japanese only | 444 MB for one weight file | Hugging Face Hub cache |
+| NLLB-200 distilled 600M | 2.46 GB for one weight file, plus up to about 22 MB for tokenizer files | Hugging Face Hub cache |
 
-## Suggested production improvements
-- Japanese-specific OCR model selection, and separate Japanese/English routing.
-- Windows Graphics Capture with exclusion verification.
-- Per-line grouping with geometric reading-order handling, temporal stabilization, and debouncing.
-- Independent capture/OCR/translation workers with bounded latest-frame queues and cancellation of stale results.
-- Dynamic text sizing and inpainting or background-aware masks.
-- Configurable UI region picker, hotkeys, tray icon, debug screenshots and latency telemetry.
-- Optional DirectML inference only after backend/model compatibility and benchmarks are verified.
+The default Hub cache is `%USERPROFILE%\.cache\huggingface\hub`. An existing `HF_HUB_CACHE` or `HF_HOME` override is honored by Hugging Face. See the published [MangaOCR files](https://huggingface.co/kha-white/manga-ocr-base/tree/main) and [NLLB files](https://huggingface.co/facebook/nllb-200-distilled-600M/tree/main).
+
+## Detection and placement
+
+Japanese mode runs the PP-OCRv4 detector bundled with RapidOCR, groups lines when their orientation and shared enclosed light background support doing so, then runs MangaOCR on padded crops. English mode uses RapidOCR's recognition and confidence scores. Both paths translate each region with the existing NLLB model and render the result in capture-relative coordinates.
+
+The bundled PaddleOCR detector uses the existing Windows CPU ONNX stack with no separate weight download. [CRAFT](https://github.com/clovaai/CRAFT-pytorch) provides character and affinity maps and would still need dialogue grouping. [Comic Text Detector](https://github.com/dmMaze/comic-text-detector) produces comic text blocks and masks, but would add separate weights and a comic-specific inference path for a project that also targets web text. The included model smoke test checks the selected detector on two vertical and one horizontal synthetic Japanese bubbles. Real manga may vary with artwork, stylized lettering, furigana, and dark or open bubbles. Lines without sufficient grouping evidence remain separate, including on web pages.
+
+- `detection.padding` adds crop context and `detection.min_side` rejects tiny detections.
+- Identical frames skip detection. When only pixels outside known text regions change, `detection.rescan_ms` limits how soon detection runs again. A deferred scan still looks for new text. Set this to `0` for immediate rescans. Unchanged Japanese crops reuse recognition and translations are cached by language and normalized source text. The old `change_threshold` setting is obsolete.
+- `overlay.background_mode` accepts `text_region` for a compact text background, `transparent` for shadowed text, or `speech_bubble` to prefer fitting inside the detected dialogue span when grouping finds an enclosed light area. This is a text-span heuristic. It does not recover a bubble contour or replace artwork.
+- `overlay.padding`, `min_font_size`, `max_font_size`, and `auto_fit_text` control placement. Font sizes are physical pixels. Text wraps and can shift slightly to stay in bounds and avoid another translation. If a translation still cannot fit, it is omitted. Enlarge the capture or lower `min_font_size` if this occurs. Existing configs use their `font_size` as the default maximum.
+- `auto` uses RapidOCR and chooses the translation language from recognized text. Use `ja` for Japanese detection and recognition.
+
+## Capture and diagnostics
+
+The app resolves Tk's top-level Win32 window, positions it in physical screen coordinates, and checks capture affinity. When exclusion is unavailable, it briefly hides the overlay during each MSS capture and restores it without activating it. Set `overlay.hide_during_capture` to `true` if you see translated text in saved captures despite affinity being enabled. The fallback can flicker. Use a windowed or borderless source for capture.
+
+Enable `debug.enabled` for region timing and cache diagnostics. Enable `save_capture` or `save_detected_regions` to write timestamped PNGs under `debug\`. The latter labels boxes and orientations. Set `log_ocr` and `log_translation` to print the corresponding text. Image saving and text logging are individually opt-in. Older boolean `debug` settings continue to control diagnostics.
+
+## Verification
+
+Run from the repository root with the virtual environment activated:
+
+```bat
+python -B -m unittest discover -v
+python -B tests_detector_smoke.py
+python -B tests_detector_smoke.py --translate
+```
+
+The Windows overlay tests require an interactive desktop. The smoke test uses the Windows Japanese Gothic font and the bundled RapidOCR models. The optional translation check also loads MangaOCR and NLLB. These checks cover synthetic dialogue and a Windows Canvas, with no representative manga accuracy or target-hardware performance benchmark.
