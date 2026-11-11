@@ -1,0 +1,14 @@
+{
+  "region": {"left": 180, "top": 650, "width": 1100, "height": 260},
+  "capture_interval_ms": 350,
+  "change_threshold": 2.5,
+  "ocr_min_confidence": 0.55,
+  "ocr_scale": 1.5,
+  "translation_model": "facebook/nllb-200-distilled-600M",
+  "translation_max_tokens": 180,
+  "font_size": 21,
+  "overlay_background": "#101010",
+  "overlay_foreground": "#ffffff",
+  "source_language": "ja",
+  "debug": false
+}
